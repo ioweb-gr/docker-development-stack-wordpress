@@ -57,13 +57,29 @@ define('DB_HOST', 'localhost');
   }
 });
 
-test('Windows wrappers resolve the consumer root from the submodule bin directory', () => {
+test('wrappers resolve the consumer root from the submodule bin directory', () => {
   const bin = path.join(__dirname, '..', 'bin');
-  const wrappers = ['import.ps1', 'restore.ps1', 'search-replace.ps1', 'wp.ps1'];
-  for (const wrapper of wrappers) {
+  const powershellWrappers = ['import.ps1', 'restore.ps1', 'search-replace.ps1', 'wp.ps1'];
+  for (const wrapper of powershellWrappers) {
     const source = fs.readFileSync(path.join(bin, wrapper), 'utf8');
     assert.match(source, /Join-Path \$PSScriptRoot ['"]\.\.\\\.\.\\\.\.['"]/);
     assert.doesNotMatch(source, /Join-Path \$PSScriptRoot ['"]\.\.\\\.\.['"]/);
+  }
+  const cmdWrappers = ['import.cmd', 'restore.cmd', 'search-replace.cmd', 'wp.cmd'];
+  for (const wrapper of cmdWrappers) {
+    const source = fs.readFileSync(path.join(bin, wrapper), 'utf8');
+    assert.ok(source.includes('set "PROJECT_ROOT=%~dp0..\\..\\.."'), wrapper);
+  }
+  const shellWrappers = ['import.sh', 'restore.sh', 'search-replace.sh', 'wp.sh'];
+  for (const wrapper of shellWrappers) {
+    const source = fs.readFileSync(path.join(bin, wrapper), 'utf8');
+    assert.ok(source.includes('script_dir/../../..'), wrapper);
+  }
+  const wpWrappers = ['wp.cmd', 'wp.ps1', 'wp.sh'];
+  for (const wrapper of wpWrappers) {
+    const source = fs.readFileSync(path.join(bin, wrapper), 'utf8');
+    assert.ok(source.includes('wp %*') || source.includes('wp @Arguments') || source.includes('wp "$@"'), wrapper);
+    assert.doesNotMatch(source, /wp --project-root/);
   }
   const simulatedBin = path.join('consumer', 'docker', 'wordpress', 'bin');
   assert.equal(path.resolve(simulatedBin, '..', '..', '..'), path.resolve('consumer'));
