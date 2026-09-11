@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const {
   buildSearchReplaceArguments,
@@ -29,6 +30,43 @@ test('WordPress runtime renderer creates an idempotent full-HD missing-image fal
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('WordPress runtime config is syntactically valid PHP', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ioweb-wordpress-'));
+  try {
+    fs.writeFileSync(path.join(root, 'wp-config.php'), `<?php
+define('DB_NAME', 'placeholder');
+define('DB_USER', 'placeholder');
+define('DB_PASSWORD', 'placeholder');
+define('DB_HOST', 'localhost');
+`, 'utf8');
+    const result = renderRuntime(root, { quiet: true });
+    const runtime = fs.readFileSync(result.runtime, 'utf8');
+    assert.match(runtime, /function ioweb_ddev_wordpress_database_host\(\) \{[\s\S]*?return \$port[\s\S]*?;\n\}/);
+
+    const lint = spawnSync('php', ['-l', result.runtime], { encoding: 'utf8' });
+    if (lint.error?.code === 'ENOENT') {
+      t.skip('PHP is not installed on the test host; structural PHP assertions still ran');
+      return;
+    }
+    assert.equal(lint.status, 0, `${lint.stdout}\n${lint.stderr}`);
+    assert.match(`${lint.stdout}\n${lint.stderr}`, /No syntax errors detected/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Windows wrappers resolve the consumer root from the submodule bin directory', () => {
+  const bin = path.join(__dirname, '..', 'bin');
+  const wrappers = ['import.ps1', 'restore.ps1', 'search-replace.ps1', 'wp.ps1'];
+  for (const wrapper of wrappers) {
+    const source = fs.readFileSync(path.join(bin, wrapper), 'utf8');
+    assert.match(source, /Join-Path \$PSScriptRoot ['"]\.\.\\\.\.\\\.\.['"]/);
+    assert.doesNotMatch(source, /Join-Path \$PSScriptRoot ['"]\.\.\\\.\.['"]/);
+  }
+  const simulatedBin = path.join('consumer', 'docker', 'wordpress', 'bin');
+  assert.equal(path.resolve(simulatedBin, '..', '..', '..'), path.resolve('consumer'));
 });
 
 test('WordPress replacement manifest validates ordered domain pairs', () => {

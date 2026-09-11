@@ -218,6 +218,7 @@ function renderWordpressRuntimeConfig(root) {
     '    $host = ioweb_ddev_wordpress_env("IOWEB_DDEV_DATABASE_HOST");',
     '    $port = getenv("IOWEB_DDEV_DATABASE_PORT");',
     '    return $port && $port !== "3306" ? $host . ":" . $port : $host;',
+    '}',
     '',
   ].join('\n');
   const phpOpen = rendered.match(/^\uFEFF?<\?php[^\r\n]*(?:\r?\n|$)/);

@@ -5,6 +5,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 node (Join-Path $PSScriptRoot '..\src\cli.js') search-replace --project-root $projectRoot @Arguments
 exit $LASTEXITCODE
