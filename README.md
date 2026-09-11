@@ -24,6 +24,47 @@ config path. Only `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_HOST` are
 redirected to the Commons environment. The tracked application configuration
 and its non-database settings are not overwritten.
 
+## Dump import and domain replacement
+
+The consumer owns the dump and replacement policy. Bootstrap the manifest once
+after the stack has been installed:
+
+```powershell
+node docker/wordpress/src/cli.js init-replacements
+```
+
+Edit `docker/import-replacements.local.json` with the original domain values
+and their target DDEV URLs. Keep the source dump unchanged. WordPress imports
+through WP-CLI and performs replacements only after the database import, so
+serialized option values, widget settings, and plugin data are updated safely:
+
+```powershell
+.\docker\wordpress\bin\import.ps1 --dump docker/imports/site.sql.gz --confirm
+.\docker\wordpress\bin\search-replace.ps1
+.\docker\wordpress\bin\search-replace.ps1 --apply
+```
+
+The first `search-replace` invocation is a dry run. For a guided one-command
+restore, use `restore`; it imports the dump and then applies the manifest:
+
+```powershell
+.\docker\wordpress\bin\restore.ps1 --dump docker/imports/site.sql.gz
+```
+
+Import and applied replacement operations require an interactive confirmation
+or explicit `--confirm`; dry runs do not. `restore` requires at least one
+manifest replacement.
+The default skips `guid`; set `include_guid` to `true` in the manifest or pass
+`--include-guid` when GUID values must also change. Do not use `sed` for
+WordPress database replacement because it cannot preserve serialized values.
+
+Use the native DDEV runtime directly for arbitrary WP-CLI operations:
+
+```powershell
+.\docker\wordpress\bin\wp.ps1 plugin list
+ddev wp option get home
+```
+
 Run the bootstrap from the consumer root:
 
 ```powershell

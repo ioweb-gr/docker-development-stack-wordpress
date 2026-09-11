@@ -1,0 +1,10 @@
+{
+  "schema": "ioweb-wordpress-import-replacements/v1",
+  "include_guid": false,
+  "replacements": [
+    {
+      "from": "https://www.example.com",
+      "to": "https://project.ddev.site"
+    }
+  ]
+}
