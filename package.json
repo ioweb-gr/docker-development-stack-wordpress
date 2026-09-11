@@ -1,0 +1,13 @@
+{
+  "name": "@ioweb/docker-development-stack-wordpress",
+  "version": "1.0.0",
+  "private": false,
+  "description": "Project-neutral native DDEV WordPress integration and diagnostics",
+  "type": "commonjs",
+  "bin": {
+    "ioweb-wordpress": "src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
