@@ -1,11 +1,35 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
   buildSearchReplaceArguments,
   parseReplacementManifest,
   parseArgs,
+  renderRuntime,
 } = require('../src/cli');
+
+test('WordPress runtime renderer creates an idempotent full-HD missing-image fallback', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ioweb-wordpress-'));
+  try {
+    const first = renderRuntime(root, { quiet: true });
+    assert.equal(first.missing, true);
+    const destination = path.join(root, '.ddev', 'nginx', '10-ioweb-wordpress-missing-image.conf');
+    const content = fs.readFileSync(destination, 'utf8');
+    assert.match(content, /ioweb-managed: docker-bootstrap WordPress missing image fallback v1/);
+    assert.match(content, /try_files \$uri @ioweb_wordpress_missing_image/);
+    assert.match(content, /width="1920" height="1080" viewBox="0 0 1920 1080"/);
+    assert.match(content, /default_type image\/svg\+xml/);
+
+    const second = renderRuntime(root, { quiet: true });
+    assert.equal(second.missing, true);
+    assert.equal(fs.readFileSync(destination, 'utf8'), content);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('WordPress replacement manifest validates ordered domain pairs', () => {
   const manifest = parseReplacementManifest({

@@ -18,8 +18,8 @@ bootstrap. It is a native DDEV adapter, not a replacement runtime.
 
 The umbrella bootstrap installs this repository as `docker/wordpress` and
 invokes `src/cli.js` from the consumer root. The runtime renderer writes only
-ignored files under `.ddev/.runtime` and uses the Commons
-`IOWEB_DDEV_DATABASE_*` environment keys. It preserves the tracked
+ignored generated files under `.ddev/.runtime` and `.ddev/nginx` and uses the
+Commons `IOWEB_DDEV_DATABASE_*` environment keys. It preserves the tracked
 `wp-config.php` as the source for all non-database settings.
 
 The consumer-owned `docker/import-replacements.local.json` uses ordered

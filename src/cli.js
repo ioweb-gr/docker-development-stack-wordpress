@@ -11,6 +11,8 @@ const childProcess = require('node:child_process');
 
 const RUNTIME_MARKER = '// ioweb-managed: docker-bootstrap WordPress Commons database overlay v1';
 const COMPOSE_MARKER = '# ioweb-managed: docker-bootstrap WordPress Commons runtime mounts v1';
+const MISSING_IMAGE_NGINX_MARKER = '# ioweb-managed: docker-bootstrap WordPress missing image fallback v1';
+const MISSING_IMAGE_NGINX_FILE = '10-ioweb-wordpress-missing-image.conf';
 const DEFAULT_DUMP_FILE = 'docker/imports/dump.sql.gz';
 const DEFAULT_REPLACEMENTS_MANIFEST = 'docker/import-replacements.local.json';
 
@@ -236,11 +238,45 @@ function renderRuntimeCompose(root) {
   ].join('\n');
 }
 
-function renderRuntime(root, options) {
+function renderMissingImageNginx() {
+  return [
+    MISSING_IMAGE_NGINX_MARKER,
+    '# Existing image files are served normally; missing image requests receive',
+    '# a neutral full-HD SVG without entering the WordPress front controller.',
+    'location ~* \\.\\.(?:avif|avifs|gif|ico|jpe?g|png|svg|svgz|webp)$ {',
+    '    try_files $uri @ioweb_wordpress_missing_image;',
+    '}',
+    '',
+    'location @ioweb_wordpress_missing_image {',
+    '    internal;',
+    '    types {}',
+    '    default_type image/svg+xml;',
+    '    add_header Cache-Control "public, max-age=300" always;',
+    '    add_header X-Frame-Options "SAMEORIGIN" always;',
+    '    return 200 \'<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet"><rect width="1920" height="1080" fill="rgb(243,244,246)"/></svg>\';',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function renderMissingImageNginxConfig(root, options = {}) {
+  const destination = path.join(root, '.ddev', 'nginx', MISSING_IMAGE_NGINX_FILE);
+  const rendered = renderMissingImageNginx();
+  const existing = fs.existsSync(destination) ? fs.readFileSync(destination, 'utf8') : '';
+  if (existing && !existing.includes(MISSING_IMAGE_NGINX_MARKER) && !options.force) {
+    throw new Error(`Refusing to overwrite non-managed WordPress missing-image configuration: ${destination}`);
+  }
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  if (!managedTextEqual(existing, rendered)) fs.writeFileSync(destination, rendered, 'utf8');
+  return destination;
+}
+
+function renderRuntime(root, options = {}) {
+  const missingImage = renderMissingImageNginxConfig(root, options);
   const rendered = renderWordpressRuntimeConfig(root);
   if (!rendered) {
-    if (!options.quiet) console.log('[wordpress] wp-config.php is absent; no runtime overlay was created');
-    return { missing: true };
+    if (!options.quiet) console.log(`[wordpress] wp-config.php is absent; missing image fallback: ${path.relative(root, missingImage)}`);
+    return { missing: true, missingImage };
   }
   const destination = path.join(root, '.ddev', '.runtime', 'wp-config.php');
   const existing = fs.existsSync(destination) ? fs.readFileSync(destination, 'utf8') : '';
@@ -259,7 +295,7 @@ function renderRuntime(root, options) {
   fs.mkdirSync(path.dirname(composeDestination), { recursive: true });
   if (!managedTextEqual(existingCompose, compose)) fs.writeFileSync(composeDestination, compose, 'utf8');
   if (!options.quiet) console.log(`[wordpress] Commons runtime overlay: ${path.relative(root, destination)}`);
-  return { missing: false, runtime: destination, compose: composeDestination };
+  return { missing: false, runtime: destination, compose: composeDestination, missingImage };
 }
 
 function isLocalTarget(hostname) {
@@ -600,6 +636,8 @@ module.exports = {
   readReplacementManifest,
   renderRuntime,
   renderRuntimeCompose,
+  renderMissingImageNginx,
+  renderMissingImageNginxConfig,
   renderWordpressRuntimeConfig,
   restore,
   runtimeAudit,

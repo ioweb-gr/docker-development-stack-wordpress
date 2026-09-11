@@ -77,6 +77,18 @@ The authorized Commons provisioner is invoked by the umbrella wizard when the
 consumer handoff is missing. Do not copy Commons passwords into this repository
 or commit the consumer-local handoff.
 
+## Missing image fallback
+
+The runtime renderer also creates the managed
+`.ddev/nginx/10-ioweb-wordpress-missing-image.conf` include. Existing image
+files are served normally; missing image URLs receive a cacheable 1920x1080
+neutral SVG instead of being sent through the WordPress front controller.
+The file is regenerated idempotently by `docker-bootstrap` or by running:
+
+```powershell
+node docker/wordpress/src/cli.js render-runtime --project-root .
+```
+
 ## Performance audit
 
 The benchmark is an explicit, bounded HTTP diagnostic. It makes no database
