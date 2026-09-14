@@ -58,6 +58,16 @@ The default skips `guid`; set `include_guid` to `true` in the manifest or pass
 `--include-guid` when GUID values must also change. Do not use `sed` for
 WordPress database replacement because it cannot preserve serialized values.
 
+Umbrella bootstrapping also installs the shared cross-platform restore command:
+
+```powershell
+ddev ioweb-import --dump docker/imports/site.sql.gz
+```
+
+It supports the consumer-owned table exclusion and post-import SQL manifests;
+WordPress replacements still run through WP-CLI after the import. Use
+`--dry-run` to validate all files without changing the database.
+
 Use the native DDEV runtime directly for arbitrary WP-CLI operations:
 
 ```powershell
