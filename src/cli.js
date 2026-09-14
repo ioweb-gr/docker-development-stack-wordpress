@@ -25,7 +25,7 @@ function usage() {
     'Commands:',
     '  render-runtime  Generate the ignored Commons-backed wp-config overlay',
     '  init-replacements Create a consumer-owned replacement manifest template',
-    '  database restore  Use ddev ioweb-import for shared dump restore, exclusions, and replacements',
+    '  database restore  Use `ddev ioweb-import` for shared dump restore, exclusions, and replacements',
     '  wp              Run arbitrary WP-CLI arguments in the DDEV web container',
     '  benchmark       Run a bounded HTTP benchmark against the local site',
     '  audit           Report PHP runtime settings and run the HTTP benchmark',
