@@ -12,7 +12,9 @@ const childProcess = require('node:child_process');
 const RUNTIME_MARKER = '// ioweb-managed: docker-bootstrap WordPress Commons database overlay v1';
 const COMPOSE_MARKER = '# ioweb-managed: docker-bootstrap WordPress Commons runtime mounts v1';
 const MISSING_IMAGE_NGINX_MARKER = '# ioweb-managed: docker-bootstrap WordPress missing image fallback v1';
+const PHP_PERFORMANCE_MARKER = '; ioweb-managed: docker-bootstrap WordPress FPM performance v1';
 const MISSING_IMAGE_NGINX_FILE = '10-ioweb-wordpress-missing-image.conf';
+const PHP_PERFORMANCE_FILE = '90-ioweb-fpm-performance.ini';
 const DEFAULT_DUMP_FILE = 'docker/imports/dump.sql.gz';
 const DEFAULT_REPLACEMENTS_MANIFEST = 'docker/import-replacements.local.json';
 
@@ -272,12 +274,37 @@ function renderMissingImageNginxConfig(root, options = {}) {
   return destination;
 }
 
+function renderPhpPerformance() {
+  return [
+    PHP_PERFORMANCE_MARKER,
+    '; DDEV copies .ddev/php/*.ini into both the CLI and FPM SAPIs.',
+    'opcache.validate_timestamps = 1',
+    'opcache.revalidate_freq = 120',
+    'realpath_cache_size = 32M',
+    'realpath_cache_ttl = 7200',
+    '',
+  ].join('\n');
+}
+
+function renderPhpPerformanceConfig(root, options = {}) {
+  const destination = path.join(root, '.ddev', 'php', PHP_PERFORMANCE_FILE);
+  const rendered = renderPhpPerformance();
+  const existing = fs.existsSync(destination) ? fs.readFileSync(destination, 'utf8') : '';
+  if (existing && !existing.includes(PHP_PERFORMANCE_MARKER) && !options.force) {
+    throw new Error(`Refusing to overwrite unmanaged WordPress PHP performance configuration: ${destination}`);
+  }
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  if (!managedTextEqual(existing, rendered)) fs.writeFileSync(destination, rendered, 'utf8');
+  return destination;
+}
+
 function renderRuntime(root, options = {}) {
+  const php = renderPhpPerformanceConfig(root, options);
   const missingImage = renderMissingImageNginxConfig(root, options);
   const rendered = renderWordpressRuntimeConfig(root);
   if (!rendered) {
-    if (!options.quiet) console.log(`[wordpress] wp-config.php is absent; missing image fallback: ${path.relative(root, missingImage)}`);
-    return { missing: true, missingImage };
+    if (!options.quiet) console.log(`[wordpress] wp-config.php is absent; PHP performance: ${path.relative(root, php)}; missing image fallback: ${path.relative(root, missingImage)}`);
+    return { missing: true, php, missingImage };
   }
   const destination = path.join(root, '.ddev', '.runtime', 'wp-config.php');
   const existing = fs.existsSync(destination) ? fs.readFileSync(destination, 'utf8') : '';
@@ -296,7 +323,7 @@ function renderRuntime(root, options = {}) {
   fs.mkdirSync(path.dirname(composeDestination), { recursive: true });
   if (!managedTextEqual(existingCompose, compose)) fs.writeFileSync(composeDestination, compose, 'utf8');
   if (!options.quiet) console.log(`[wordpress] Commons runtime overlay: ${path.relative(root, destination)}`);
-  return { missing: false, runtime: destination, compose: composeDestination, missingImage };
+  return { missing: false, runtime: destination, compose: composeDestination, php, missingImage };
 }
 
 function isLocalTarget(hostname) {
@@ -561,7 +588,7 @@ function runWp(options) {
 
 function runtimeAudit(options) {
   const root = projectRoot(options);
-  const code = "echo json_encode(['php_version'=>PHP_VERSION,'memory_limit'=>ini_get('memory_limit'),'opcache_enabled'=>(bool)ini_get('opcache.enable'),'opcache_cli_enabled'=>(bool)ini_get('opcache.enable_cli'),'opcache_revalidate_freq'=>ini_get('opcache.revalidate_freq')]);";
+  const code = "echo json_encode(['php_version'=>PHP_VERSION,'memory_limit'=>ini_get('memory_limit'),'opcache_enabled'=>(bool)ini_get('opcache.enable'),'opcache_cli_enabled'=>(bool)ini_get('opcache.enable_cli'),'opcache_validate_timestamps'=>(bool)ini_get('opcache.validate_timestamps'),'opcache_revalidate_freq'=>ini_get('opcache.revalidate_freq'),'realpath_cache_size'=>ini_get('realpath_cache_size')]);";
   const result = childProcess.spawnSync(ddevCommand(), ['exec', '-s', 'web', 'php', '-r', code], {
     cwd: root,
     encoding: 'utf8',
@@ -637,6 +664,8 @@ module.exports = {
   readReplacementManifest,
   renderRuntime,
   renderRuntimeCompose,
+  renderPhpPerformance,
+  renderPhpPerformanceConfig,
   renderMissingImageNginx,
   renderMissingImageNginxConfig,
   renderWordpressRuntimeConfig,

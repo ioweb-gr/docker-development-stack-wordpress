@@ -89,6 +89,11 @@ The file is regenerated idempotently by `docker-bootstrap` or by running:
 node docker/wordpress/src/cli.js render-runtime --project-root .
 ```
 
+The same renderer creates `.ddev/php/90-ioweb-fpm-performance.ini`. After a
+`ddev restart`, DDEV applies its managed PHP policy to FPM and CLI: timestamp
+validation stays enabled with a 120-second revalidation interval and the
+realpath cache is 32M.
+
 ## Performance audit
 
 The benchmark is an explicit, bounded HTTP diagnostic. It makes no database
