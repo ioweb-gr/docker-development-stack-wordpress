@@ -25,9 +25,7 @@ function usage() {
     'Commands:',
     '  render-runtime  Generate the ignored Commons-backed wp-config overlay',
     '  init-replacements Create a consumer-owned replacement manifest template',
-    '  import          Import an SQL or SQL.GZ dump into the Commons database',
-    '  search-replace  Dry-run or apply serialized-safe URL replacements with WP-CLI',
-    '  restore         Import a dump, then apply the replacement manifest with WP-CLI',
+    '  database restore  Use ddev ioweb-import for shared dump restore, exclusions, and replacements',
     '  wp              Run arbitrary WP-CLI arguments in the DDEV web container',
     '  benchmark       Run a bounded HTTP benchmark against the local site',
     '  audit           Report PHP runtime settings and run the HTTP benchmark',
@@ -41,8 +39,8 @@ function usage() {
     '  --output FILE         Write a JSON report relative to the project root',
     '  --dump FILE           SQL or SQL.GZ dump relative to the project root',
     '  --manifest FILE       Replacement manifest relative to the project root',
-    '  --dry-run             Preview WP-CLI replacements without changing the database',
-    '  --apply               Apply WP-CLI replacements (search-replace defaults to dry-run)',
+    '  --dry-run             Validate shared import inputs without changing the database',
+    '  --apply               Apply WP-CLI replacements (legacy API only)',
     '  --include-guid        Include the WordPress guid column in replacements',
     '  --confirm             Confirm an import or replacement without an interactive prompt',
     '  --insecure             Allow invalid TLS for non-local targets',
@@ -456,7 +454,7 @@ function initReplacements(options) {
   const destination = resolveProjectFile(root, options.manifest, DEFAULT_REPLACEMENTS_MANIFEST, 'Replacement manifest', false);
   const template = [
     '{',
-    '  "schema": "ioweb-wordpress-import-replacements/v1",',
+    '  "schema": "ioweb-import-replacements/v1",',
     '  "include_guid": false,',
     '  "replacements": []',
     '}',
@@ -607,6 +605,9 @@ async function main(argv = process.argv.slice(2)) {
     return 0;
   }
   const command = options._[0];
+  if (['import', 'restore', 'search-replace'].includes(command)) {
+    throw new Error('WordPress database restore is provided by the shared command: ddev ioweb-import.');
+  }
   if (command === 'render-runtime') {
     renderRuntime(projectRoot(options), options);
     return 0;

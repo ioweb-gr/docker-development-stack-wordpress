@@ -26,47 +26,25 @@ and its non-database settings are not overwritten.
 
 ## Dump import and domain replacement
 
-The consumer owns the dump and replacement policy. Bootstrap the manifest once
-after the stack has been installed:
-
-```powershell
-node docker/wordpress/src/cli.js init-replacements
-```
-
-Edit `docker/import-replacements.local.json` with the original domain values
-and their target DDEV URLs. Keep the source dump unchanged. WordPress imports
-through WP-CLI and performs replacements only after the database import, so
-serialized option values, widget settings, and plugin data are updated safely:
-
-```powershell
-.\docker\wordpress\bin\import.ps1 --dump docker/imports/site.sql.gz --confirm
-.\docker\wordpress\bin\search-replace.ps1
-.\docker\wordpress\bin\search-replace.ps1 --apply
-```
-
-The first `search-replace` invocation is a dry run. For a guided one-command
-restore, use `restore`; it imports the dump and then applies the manifest:
-
-```powershell
-.\docker\wordpress\bin\restore.ps1 --dump docker/imports/site.sql.gz
-```
-
-Import and applied replacement operations require an interactive confirmation
-or explicit `--confirm`; dry runs do not. `restore` requires at least one
-manifest replacement.
-The default skips `guid`; set `include_guid` to `true` in the manifest or pass
-`--include-guid` when GUID values must also change. Do not use `sed` for
-WordPress database replacement because it cannot preserve serialized values.
-
-Umbrella bootstrapping also installs the shared cross-platform restore command:
+The consumer owns the dump and replacement, table-exclusion, and post-import
+SQL manifests. Use the umbrella-generated shared pipeline for every restore:
 
 ```powershell
 ddev ioweb-import --dump docker/imports/site.sql.gz
 ```
 
-It supports the consumer-owned table exclusion and post-import SQL manifests;
-WordPress replacements still run through WP-CLI after the import. Use
-`--dry-run` to validate all files without changing the database.
+It validates all inputs, clears only the allocated Commons schema by default,
+streams the SQL import, and applies WordPress replacements afterward through
+WP-CLI so serialized values remain valid. Use `--dry-run` to validate all
+files without changing the database, or `--no-reset` for an additive import.
+Set `include_guid` to `true` in the replacement manifest or pass
+`--include-guid` when GUID values must also change. Do not use `sed` for
+WordPress database replacement.
+
+Run `docker-bootstrap --install-skills` once from the consumer root to link the
+live umbrella and stack skills into `.agents/skills`; `docker-bootstrap
+--self-update` refreshes those links after updating the umbrella and its
+submodules.
 
 Use the native DDEV runtime directly for arbitrary WP-CLI operations:
 

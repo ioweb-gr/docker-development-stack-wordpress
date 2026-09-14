@@ -68,9 +68,12 @@ define('DB_HOST', 'localhost');
   }
 });
 
-test('Windows wrappers resolve the consumer root from the submodule bin directory', () => {
+test('WordPress keeps only non-import Windows wrappers in the submodule bin directory', () => {
   const bin = path.join(__dirname, '..', 'bin');
-  const wrappers = ['import.ps1', 'restore.ps1', 'search-replace.ps1', 'wp.ps1'];
+  for (const removed of ['import.ps1', 'restore.ps1', 'search-replace.ps1']) {
+    assert.equal(fs.existsSync(path.join(bin, removed)), false);
+  }
+  const wrappers = ['wp.ps1'];
   for (const wrapper of wrappers) {
     const source = fs.readFileSync(path.join(bin, wrapper), 'utf8');
     assert.match(source, /Join-Path \$PSScriptRoot ['"]\.\.\\\.\.\\\.\.['"]/);
@@ -82,7 +85,7 @@ test('Windows wrappers resolve the consumer root from the submodule bin director
 
 test('WordPress replacement manifest validates ordered domain pairs', () => {
   const manifest = parseReplacementManifest({
-    schema: 'ioweb-wordpress-import-replacements/v1',
+    schema: 'ioweb-import-replacements/v1',
     replacements: [{ from: 'https://old.example', to: 'https://new.ddev.site' }],
   }, 'manifest.json');
 
