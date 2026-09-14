@@ -93,6 +93,14 @@ test('WordPress replacement manifest validates ordered domain pairs', () => {
   assert.equal(manifest.replacements[0].to, 'https://new.ddev.site');
 });
 
+test('legacy WordPress restore commands direct callers to the shared pipeline', () => {
+  const result = spawnSync(process.execPath, [path.join(__dirname, '..', 'src', 'cli.js'), 'import'], {
+    encoding: 'utf8',
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stdout}\n${result.stderr}`, /ddev ioweb-import/);
+});
+
 test('WordPress replacements use precise WP-CLI mode and skip guid by default', () => {
   const args = buildSearchReplaceArguments(
     { from: 'old.example', to: 'new.ddev.site' },

@@ -12,6 +12,12 @@ services.
 
 Use the umbrella-generated command for every database restore:
 
+Initialize the consumer-owned replacement manifest once:
+
+```powershell
+node docker/wordpress/src/cli.js init-replacements
+```
+
 ```powershell
 ddev ioweb-import --dump docker/imports/site.sql.gz
 ddev ioweb-import --dry-run

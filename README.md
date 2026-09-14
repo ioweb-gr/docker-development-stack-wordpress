@@ -29,6 +29,15 @@ and its non-database settings are not overwritten.
 The consumer owns the dump and replacement, table-exclusion, and post-import
 SQL manifests. Use the umbrella-generated shared pipeline for every restore:
 
+Initialize the replacement manifest once after the stack has been installed:
+
+```powershell
+node docker/wordpress/src/cli.js init-replacements
+```
+
+Edit `docker/import-replacements.local.json` with ordered original-domain and
+target-URL pairs, then run the shared restore:
+
 ```powershell
 ddev ioweb-import --dump docker/imports/site.sql.gz
 ```
