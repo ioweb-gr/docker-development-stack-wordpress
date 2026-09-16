@@ -207,6 +207,7 @@ function renderWordpressRuntimeConfig(root) {
   }
   const helper = [
     RUNTIME_MARKER,
+    'if (!function_exists("ioweb_ddev_wordpress_env")) {',
     'function ioweb_ddev_wordpress_env($key) {',
     '    $value = getenv($key);',
     '    if ($value === false || $value === "") {',
@@ -214,10 +215,13 @@ function renderWordpressRuntimeConfig(root) {
     '    }',
     '    return $value;',
     '}',
+    '}',
+    'if (!function_exists("ioweb_ddev_wordpress_database_host")) {',
     'function ioweb_ddev_wordpress_database_host() {',
     '    $host = ioweb_ddev_wordpress_env("IOWEB_DDEV_DATABASE_HOST");',
     '    $port = getenv("IOWEB_DDEV_DATABASE_PORT");',
     '    return $port && $port !== "3306" ? $host . ":" . $port : $host;',
+    '}',
     '}',
     '',
   ].join('\n');
