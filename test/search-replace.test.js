@@ -31,6 +31,7 @@ test('WordPress runtime renderer creates an idempotent full-HD missing-image fal
     const content = fs.readFileSync(destination, 'utf8');
     assert.match(fs.readFileSync(php, 'utf8'), /opcache\.revalidate_freq = 120/);
     assert.match(content, /ioweb-managed: docker-bootstrap WordPress missing image fallback v1/);
+    assert.match(content, /location \^~ \/wp-content\/uploads\//);
     assert.match(content, /try_files \$uri @ioweb_wordpress_missing_image/);
     assert.match(content, /width="1920" height="1080" viewBox="0 0 1920 1080"/);
     assert.match(content, /default_type image\/svg\+xml/);

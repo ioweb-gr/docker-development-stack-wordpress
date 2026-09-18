@@ -248,7 +248,7 @@ function renderMissingImageNginx() {
     MISSING_IMAGE_NGINX_MARKER,
     '# Existing image files are served normally; missing image requests receive',
     '# a neutral full-HD SVG without entering the WordPress front controller.',
-    'location ~* \\.\\.(?:avif|avifs|gif|ico|jpe?g|png|svg|svgz|webp)$ {',
+    'location ^~ /wp-content/uploads/ {',
     '    try_files $uri @ioweb_wordpress_missing_image;',
     '}',
     '',
