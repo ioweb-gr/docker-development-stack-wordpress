@@ -24,6 +24,31 @@ config path. Only `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_HOST` are
 redirected to the Commons environment. The tracked application configuration
 and its non-database settings are not overwritten.
 
+## Automated test administrator
+
+Bootstrap writes the consumer-local `docker/.env.local` with these values,
+preserving existing values and generating a password once:
+
+```dotenv
+IOWEB_TEST_ADMIN_USERNAME=ioweb-test-admin
+IOWEB_TEST_ADMIN_PASSWORD=<generated local password>
+IOWEB_TEST_ADMIN_EMAIL=ioweb-test-admin@example.invalid
+IOWEB_TEST_ADMIN_FIRST_NAME=IOWEB
+IOWEB_TEST_ADMIN_LAST_NAME=Test Admin
+```
+
+After DDEV starts, bootstrap creates or updates this WordPress user with the
+administrator role. A database import provisions it again after the import
+and post-import SQL complete. If WordPress is not installed yet, only the
+credentials are written and provisioning is deferred. To run it manually:
+
+```powershell
+node docker/wordpress/src/cli.js provision-test-admin --project-root .
+```
+
+Keep the consumer env file private; these credentials are for local automated
+testing only.
+
 ## Dump import and domain replacement
 
 The consumer owns the dump and replacement, table-exclusion, and post-import

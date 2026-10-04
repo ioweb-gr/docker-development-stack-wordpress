@@ -8,6 +8,7 @@ const path = require('node:path');
 const readline = require('node:readline');
 const { performance } = require('node:perf_hooks');
 const childProcess = require('node:child_process');
+const { ensureTestAdminEnv } = require('./lib/test-admin');
 
 const RUNTIME_MARKER = '// ioweb-managed: docker-bootstrap WordPress Commons database overlay v1';
 const COMPOSE_MARKER = '# ioweb-managed: docker-bootstrap WordPress Commons runtime mounts v1';
@@ -24,6 +25,8 @@ function usage() {
     '',
     'Commands:',
     '  render-runtime  Generate the ignored Commons-backed wp-config overlay',
+    '  ensure-test-admin-env  Write consumer-local automated-test admin credentials',
+    '  provision-test-admin  Create or update the automated-test administrator',
     '  init-replacements Create a consumer-owned replacement manifest template',
     '  database restore  Use `ddev ioweb-import` for shared dump restore, exclusions, and replacements',
     '  wp              Run arbitrary WP-CLI arguments in the DDEV web container',
@@ -436,7 +439,18 @@ function ddevCommand() {
 }
 
 function runDdevWp(root, wpArguments, options = {}) {
-  const result = childProcess.spawnSync(ddevCommand(), ['exec', '-s', 'web', 'wp', ...wpArguments], {
+  const result = executeDdevWp(root, wpArguments, options, options.spawn || childProcess.spawnSync);
+  if (!options.quiet && result.stdout) process.stdout.write(result.stdout);
+  if (!options.quiet && result.stderr) process.stderr.write(result.stderr);
+  if (result.error || result.status !== 0) {
+    const detail = result.stderr.trim().split(/\r?\n/).filter(Boolean).slice(-3).join(' ');
+    throw new Error(`DDEV WP-CLI command failed${detail ? `: ${detail}` : '.'}`);
+  }
+  return Object.freeze({ stdout: result.stdout, stderr: result.stderr });
+}
+
+function executeDdevWp(root, wpArguments, options = {}, spawn = childProcess.spawnSync) {
+  const result = spawn(options.ddevCommand || ddevCommand(), ['exec', '-s', 'web', 'wp', ...wpArguments], {
     cwd: root,
     encoding: 'utf8',
     stdio: ['inherit', 'pipe', 'pipe'],
@@ -444,13 +458,67 @@ function runDdevWp(root, wpArguments, options = {}) {
   });
   const stdout = String(result.stdout || '');
   const stderr = String(result.stderr || (result.error?.message || ''));
-  if (!options.quiet && stdout) process.stdout.write(stdout);
-  if (!options.quiet && stderr) process.stderr.write(stderr);
-  if (result.error || result.status !== 0) {
-    const detail = stderr.trim().split(/\r?\n/).filter(Boolean).slice(-3).join(' ');
-    throw new Error(`DDEV WP-CLI command failed${detail ? `: ${detail}` : '.'}`);
+  return { ...result, stdout, stderr };
+}
+
+function provisionTestAdmin(options = {}, context = {}) {
+  const root = context.root || projectRoot({ ...options, 'project-root': options['project-root'] || options.projectRoot });
+  const envFile = path.join(root, 'docker', '.env.local');
+  const credentials = ensureTestAdminEnv(envFile).values;
+  const execute = context.executeDdevWp || executeDdevWp;
+  const executeOptions = { ...options, ddevCommand: context.ddevCommand || options.ddevCommand };
+  const spawn = context.spawn || options.spawn || childProcess.spawnSync;
+  const globalArguments = ['--skip-plugins', '--skip-themes'];
+  const installed = execute(root, [...globalArguments, 'core', 'is-installed'], executeOptions, spawn);
+  if (installed.error) throw new Error(`WordPress installation check failed${installed.stderr.trim() ? `: ${installed.stderr.trim()}` : '.'}`);
+  if (installed.status !== 0) {
+    const detail = `${installed.stdout}\n${installed.stderr}`.trim();
+    if (detail && !/not installed|does not appear to be a WordPress installation|no WordPress installation/i.test(detail)) {
+      throw new Error(`WordPress installation check failed: ${detail}`);
+    }
+    if (!options.quiet) console.log('[admin] WordPress is not installed; test admin provisioning deferred.');
+    return { status: 'skipped', reason: 'not-installed', envFile };
   }
-  return Object.freeze({ stdout, stderr });
+
+  const userLookup = execute(root, [...globalArguments, 'user', 'get', credentials.IOWEB_TEST_ADMIN_USERNAME, '--field=ID'], executeOptions, spawn);
+  if (userLookup.error) throw new Error(`WordPress test admin lookup failed${userLookup.stderr.trim() ? `: ${userLookup.stderr.trim()}` : '.'}`);
+  const updateArguments = [
+    ...globalArguments,
+    'user', 'update', credentials.IOWEB_TEST_ADMIN_USERNAME,
+    `--user_pass=${credentials.IOWEB_TEST_ADMIN_PASSWORD}`,
+    '--role=administrator',
+    `--user_email=${credentials.IOWEB_TEST_ADMIN_EMAIL}`,
+    `--first_name=${credentials.IOWEB_TEST_ADMIN_FIRST_NAME}`,
+    `--last_name=${credentials.IOWEB_TEST_ADMIN_LAST_NAME}`,
+  ];
+  if (userLookup.status === 0) {
+    const updated = execute(root, updateArguments, executeOptions, spawn);
+    if (updated.error || updated.status !== 0) throw new Error(`WordPress test admin update failed${updated.stderr.trim() ? `: ${updated.stderr.trim()}` : '.'}`);
+    if (!options.quiet) console.log(`[admin] WordPress test admin ready: ${credentials.IOWEB_TEST_ADMIN_USERNAME}`);
+    return { status: 'updated', username: credentials.IOWEB_TEST_ADMIN_USERNAME, envFile };
+  }
+
+  const created = execute(root, [
+    ...globalArguments,
+    'user', 'create', credentials.IOWEB_TEST_ADMIN_USERNAME, credentials.IOWEB_TEST_ADMIN_EMAIL,
+    '--role=administrator',
+    `--user_pass=${credentials.IOWEB_TEST_ADMIN_PASSWORD}`,
+    `--first_name=${credentials.IOWEB_TEST_ADMIN_FIRST_NAME}`,
+    `--last_name=${credentials.IOWEB_TEST_ADMIN_LAST_NAME}`,
+    '--porcelain',
+  ], executeOptions, spawn);
+  if (created.error || created.status !== 0) {
+    const detail = `${created.stdout}\n${created.stderr}`;
+    if (!/already exists|already been taken|already registered|duplicate/i.test(detail)) {
+      throw new Error(`WordPress test admin provisioning failed${created.stderr.trim() ? `: ${created.stderr.trim()}` : '.'}`);
+    }
+    const updated = execute(root, updateArguments, executeOptions, spawn);
+    if (updated.error || updated.status !== 0) throw new Error(`WordPress test admin update failed${updated.stderr.trim() ? `: ${updated.stderr.trim()}` : '.'}`);
+    if (!options.quiet) console.log(`[admin] WordPress test admin ready: ${credentials.IOWEB_TEST_ADMIN_USERNAME}`);
+    return { status: 'updated', username: credentials.IOWEB_TEST_ADMIN_USERNAME, envFile };
+  }
+  if (!options.quiet) console.log(`[admin] WordPress test admin ready: ${credentials.IOWEB_TEST_ADMIN_USERNAME}`);
+  return { status: 'created', username: credentials.IOWEB_TEST_ADMIN_USERNAME, envFile };
 }
 
 function initReplacements(options) {
@@ -616,6 +684,14 @@ async function main(argv = process.argv.slice(2)) {
     renderRuntime(projectRoot(options), options);
     return 0;
   }
+  if (command === 'ensure-test-admin-env') {
+    ensureTestAdminEnv(path.join(projectRoot(options), 'docker', '.env.local'));
+    return 0;
+  }
+  if (command === 'provision-test-admin') {
+    provisionTestAdmin(options);
+    return 0;
+  }
   if (command === 'init-replacements') {
     initReplacements(options);
     return 0;
@@ -662,6 +738,7 @@ if (require.main === module) {
 module.exports = {
   benchmark,
   buildSearchReplaceArguments,
+  executeDdevWp,
   importDatabase,
   initReplacements,
   parseArgs,
@@ -674,6 +751,7 @@ module.exports = {
   renderMissingImageNginx,
   renderMissingImageNginxConfig,
   renderWordpressRuntimeConfig,
+  provisionTestAdmin,
   restore,
   runtimeAudit,
   searchReplace,
