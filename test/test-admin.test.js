@@ -47,3 +47,20 @@ test('WordPress test-admin provisioning creates an administrator without requiri
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('WordPress test-admin provisioning defers on the native WP-CLI not-installed diagnostic', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ioweb-wordpress-test-admin-'));
+  try {
+    const result = provisionTestAdmin({ projectRoot: root, quiet: true }, {
+      executeDdevWp: () => ({
+        status: 1,
+        stdout: '',
+        stderr: 'Error: This does not seem to be a WordPress installation.',
+      }),
+    });
+    assert.equal(result.status, 'skipped');
+    assert.equal(result.reason, 'not-installed');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -473,7 +473,7 @@ function provisionTestAdmin(options = {}, context = {}) {
   if (installed.error) throw new Error(`WordPress installation check failed${installed.stderr.trim() ? `: ${installed.stderr.trim()}` : '.'}`);
   if (installed.status !== 0) {
     const detail = `${installed.stdout}\n${installed.stderr}`.trim();
-    if (detail && !/not installed|does not appear to be a WordPress installation|no WordPress installation/i.test(detail)) {
+    if (detail && !/not installed|does not (?:appear|seem) to be a WordPress installation|no WordPress installation/i.test(detail)) {
       throw new Error(`WordPress installation check failed: ${detail}`);
     }
     if (!options.quiet) console.log('[admin] WordPress is not installed; test admin provisioning deferred.');
