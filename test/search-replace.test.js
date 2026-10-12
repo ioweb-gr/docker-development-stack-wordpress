@@ -10,6 +10,7 @@ const {
   parseReplacementManifest,
   parseArgs,
   renderRuntime,
+  renderRuntimeCompose,
   renderPhpPerformance,
 } = require('../src/cli');
 
@@ -19,6 +20,17 @@ test('WordPress runtime declares the shared FPM timestamp and realpath policy', 
   assert.match(config, /opcache\.revalidate_freq = 120/);
   assert.match(config, /realpath_cache_size = 32M/);
   assert.match(config, /realpath_cache_ttl = 7200/);
+});
+
+test('WordPress runtime keeps Composer vendor dependencies on a Docker volume', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ioweb-wordpress-vendor-'));
+  try {
+    const compose = renderRuntimeCompose(root);
+    assert.match(compose, /wordpress_vendor:\/var\/www\/html\/vendor/);
+    assert.match(compose, /volumes:\n  wordpress_vendor:/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('WordPress runtime renderer creates an idempotent full-HD missing-image fallback', () => {

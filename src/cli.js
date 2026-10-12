@@ -241,7 +241,10 @@ function renderRuntimeCompose(root) {
     'services:',
     '  web:',
     '    volumes:',
+    '      - wordpress_vendor:/var/www/html/vendor',
     `      - ${JSON.stringify(`${runtime}:/var/www/html/wp-config.php:ro`)}`,
+    'volumes:',
+    '  wordpress_vendor:',
     '',
   ].join('\n');
 }

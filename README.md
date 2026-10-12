@@ -95,6 +95,11 @@ ddev start
 ddev describe
 ```
 
+Composer-based consumers can install their application dependencies with
+`ddev composer install`; the generated runtime keeps `vendor/` in a
+Docker-managed volume so installation remains writable on Windows Docker
+Desktop as well as Linux hosts.
+
 The authorized Commons provisioner is invoked by the umbrella wizard when the
 consumer handoff is missing. Do not copy Commons passwords into this repository
 or commit the consumer-local handoff.
