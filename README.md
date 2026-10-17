@@ -116,10 +116,20 @@ The file is regenerated idempotently by `docker-bootstrap` or by running:
 node docker/wordpress/src/cli.js render-runtime --project-root .
 ```
 
-The same renderer creates `.ddev/php/90-ioweb-fpm-performance.ini`. After a
-`ddev restart`, DDEV applies its managed PHP policy to FPM and CLI: timestamp
-validation stays enabled with a 120-second revalidation interval and the
-realpath cache is 32M.
+The same renderer creates `.ddev/php/90-ioweb-fpm-performance.ini` plus a
+managed SAPI-specific startup hook. After a `ddev restart`, CLI/WP-CLI and
+Composer use `memory_limit=8G`, while FastCGI uses `memory_limit=2G`. These are
+per-process/request ceilings, not reserved RAM. Set independent project-local
+overrides in `docker/.env.local`, for example:
+
+```dotenv
+IOWEB_PHP_CLI_MEMORY_LIMIT=12G
+IOWEB_PHP_FPM_MEMORY_LIMIT=3G
+```
+
+Malformed or unlimited values fail closed with a diagnostic code. The runtime
+audit reports the CLI `ini_get()` result and a separate authenticated-free
+FastCGI probe; consumer-owned PHP INI files loaded later remain authoritative.
 
 ## Performance audit
 

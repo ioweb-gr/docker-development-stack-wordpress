@@ -9,6 +9,12 @@ const readline = require('node:readline');
 const { performance } = require('node:perf_hooks');
 const childProcess = require('node:child_process');
 const { ensureTestAdminEnv } = require('./lib/test-admin');
+const {
+  PHP_MEMORY_HOOK_MARKER,
+  renderFpmProbe,
+  renderPhpMemoryHook,
+  resolvePhpMemoryLimits,
+} = require('./lib/php-memory');
 
 const RUNTIME_MARKER = '// ioweb-managed: docker-bootstrap WordPress Commons database overlay v1';
 const COMPOSE_MARKER = '# ioweb-managed: docker-bootstrap WordPress Commons runtime mounts v1';
@@ -16,6 +22,8 @@ const MISSING_IMAGE_NGINX_MARKER = '# ioweb-managed: docker-bootstrap WordPress 
 const PHP_PERFORMANCE_MARKER = '; ioweb-managed: docker-bootstrap WordPress FPM performance v1';
 const MISSING_IMAGE_NGINX_FILE = '10-ioweb-wordpress-missing-image.conf';
 const PHP_PERFORMANCE_FILE = '90-ioweb-fpm-performance.ini';
+const PHP_MEMORY_HOOK_FILE = 'web-entrypoint.d/ioweb-php-memory.sh';
+const FPM_PROBE_FILE = 'ioweb-fpm-memory-probe.php';
 const DEFAULT_DUMP_FILE = 'docker/imports/dump.sql.gz';
 const DEFAULT_REPLACEMENTS_MANIFEST = 'docker/import-replacements.local.json';
 
@@ -190,6 +198,19 @@ function managedTextEqual(left, right) {
     === String(right).replace(/\r\n/g, '\n').replace(/\s+$/g, '');
 }
 
+function writeManagedFile(destination, content, marker, force) {
+  const existing = fs.existsSync(destination) ? fs.readFileSync(destination, 'utf8') : '';
+  if (existing && !existing.includes(marker) && !force) {
+    throw new Error(`Refusing to overwrite unmanaged WordPress runtime file: ${destination}`);
+  }
+  if (!managedTextEqual(existing, content)) {
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, content, 'utf8');
+    return true;
+  }
+  return false;
+}
+
 function renderWordpressRuntimeConfig(root) {
   const sourcePath = path.join(root, 'wp-config.php');
   if (!fs.existsSync(sourcePath)) return null;
@@ -285,13 +306,24 @@ function renderMissingImageNginxConfig(root, options = {}) {
 function renderPhpPerformance() {
   return [
     PHP_PERFORMANCE_MARKER,
-    '; DDEV copies .ddev/php/*.ini into both the CLI and FPM SAPIs.',
+    '; PHP memory limits are reconciled separately for CLI and FPM by the managed DDEV hook.',
     'opcache.validate_timestamps = 1',
     'opcache.revalidate_freq = 120',
     'realpath_cache_size = 32M',
     'realpath_cache_ttl = 7200',
     '',
   ].join('\n');
+}
+
+function readPhpMemoryValues(root) {
+  const file = path.join(root, 'docker', '.env.local');
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return {};
+  const values = {};
+  for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?(IOWEB_PHP_(?:CLI|FPM)_MEMORY_LIMIT)\s*=\s*(.*?)\s*$/);
+    if (match) values[match[1]] = match[2].replace(/^['"]|['"]$/g, '');
+  }
+  return values;
 }
 
 function renderPhpPerformanceConfig(root, options = {}) {
@@ -307,12 +339,19 @@ function renderPhpPerformanceConfig(root, options = {}) {
 }
 
 function renderRuntime(root, options = {}) {
+  const memory = resolvePhpMemoryLimits(readPhpMemoryValues(root), options);
+  const performancePath = path.join(root, '.ddev', 'php', PHP_PERFORMANCE_FILE);
+  const performanceChanged = !fs.existsSync(performancePath)
+    || !managedTextEqual(fs.readFileSync(performancePath, 'utf8'), renderPhpPerformance());
   const php = renderPhpPerformanceConfig(root, options);
+  const memoryHook = writeManagedFile(path.join(root, '.ddev', PHP_MEMORY_HOOK_FILE), renderPhpMemoryHook(), PHP_MEMORY_HOOK_MARKER, options.force);
+  const fpmProbe = writeManagedFile(path.join(root, '.ddev', FPM_PROBE_FILE), renderFpmProbe(), '<?php // ioweb-managed: docker-bootstrap WordPress FPM memory probe v1', options.force);
+  try { fs.chmodSync(path.join(root, '.ddev', PHP_MEMORY_HOOK_FILE), 0o755); } catch { /* Windows ACLs are managed by the user. */ }
   const missingImage = renderMissingImageNginxConfig(root, options);
   const rendered = renderWordpressRuntimeConfig(root);
   if (!rendered) {
     if (!options.quiet) console.log(`[wordpress] wp-config.php is absent; PHP performance: ${path.relative(root, php)}; missing image fallback: ${path.relative(root, missingImage)}`);
-    return { missing: true, php, missingImage };
+    return { missing: true, php, memoryHook: path.join(root, '.ddev', PHP_MEMORY_HOOK_FILE), fpmProbe: path.join(root, '.ddev', FPM_PROBE_FILE), missingImage, memory, changed: performanceChanged || memoryHook || fpmProbe };
   }
   const destination = path.join(root, '.ddev', '.runtime', 'wp-config.php');
   const existing = fs.existsSync(destination) ? fs.readFileSync(destination, 'utf8') : '';
@@ -331,7 +370,7 @@ function renderRuntime(root, options = {}) {
   fs.mkdirSync(path.dirname(composeDestination), { recursive: true });
   if (!managedTextEqual(existingCompose, compose)) fs.writeFileSync(composeDestination, compose, 'utf8');
   if (!options.quiet) console.log(`[wordpress] Commons runtime overlay: ${path.relative(root, destination)}`);
-  return { missing: false, runtime: destination, compose: composeDestination, php, missingImage };
+  return { missing: false, runtime: destination, compose: composeDestination, php, memoryHook: path.join(root, '.ddev', PHP_MEMORY_HOOK_FILE), fpmProbe: path.join(root, '.ddev', FPM_PROBE_FILE), missingImage, memory, changed: performanceChanged || memoryHook || fpmProbe };
 }
 
 function isLocalTarget(hostname) {
@@ -670,7 +709,14 @@ function runtimeAudit(options) {
   if (result.error || result.status !== 0) throw new Error(`DDEV PHP audit failed${result.stderr ? `: ${result.stderr.trim()}` : '.'}`);
   const match = String(result.stdout || '').match(/\{[^\r\n]*\}\s*$/);
   if (!match) throw new Error('DDEV PHP audit returned no JSON runtime data.');
-  return JSON.parse(match[0]);
+  const cli = JSON.parse(match[0]);
+  const fpmProbe = childProcess.spawnSync(ddevCommand(), ['exec', '-s', 'web', 'php', '/mnt/ddev_config/ioweb-fpm-memory-probe.php'], { cwd: root, encoding: 'utf8', shell: false });
+  if (fpmProbe.error || fpmProbe.status !== 0) throw new Error('DDEV FPM memory audit failed.');
+  const fpmMatch = String(fpmProbe.stdout || '').match(/\{[^\r\n]*\}\s*$/);
+  if (!fpmMatch) throw new Error('DDEV FPM memory audit returned no JSON runtime data.');
+  const fpm = JSON.parse(fpmMatch[0]);
+  if (fpm.sapi !== 'fpm-fcgi') throw new Error('DDEV FPM memory audit did not verify FPM SAPI.');
+  return { ...cli, fpm_memory_limit: fpm.memory_limit, fpm_php_version: fpm.php_version, fpm_sapi: fpm.sapi };
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -749,6 +795,8 @@ module.exports = {
   readReplacementManifest,
   renderRuntime,
   renderRuntimeCompose,
+  renderFpmProbe,
+  renderPhpMemoryHook,
   renderPhpPerformance,
   renderPhpPerformanceConfig,
   renderMissingImageNginx,
@@ -756,6 +804,7 @@ module.exports = {
   renderWordpressRuntimeConfig,
   provisionTestAdmin,
   restore,
+  resolvePhpMemoryLimits,
   runtimeAudit,
   searchReplace,
 };

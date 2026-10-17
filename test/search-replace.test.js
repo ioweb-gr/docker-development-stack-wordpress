@@ -11,8 +11,28 @@ const {
   parseArgs,
   renderRuntime,
   renderRuntimeCompose,
+  renderFpmProbe,
+  renderPhpMemoryHook,
   renderPhpPerformance,
+  resolvePhpMemoryLimits,
 } = require('../src/cli');
+
+test('WordPress resolves independent PHP memory defaults and overrides', () => {
+  assert.deepEqual(resolvePhpMemoryLimits(), { cli: '8G', fpm: '2G' });
+  assert.deepEqual(resolvePhpMemoryLimits({ IOWEB_PHP_CLI_MEMORY_LIMIT: '12G' }), { cli: '12G', fpm: '2G' });
+  assert.deepEqual(resolvePhpMemoryLimits({ IOWEB_PHP_FPM_MEMORY_LIMIT: '3G' }), { cli: '8G', fpm: '3G' });
+  assert.throws(() => resolvePhpMemoryLimits({ IOWEB_PHP_CLI_MEMORY_LIMIT: '-1' }), /IOWEB_PHP_CLI_MEMORY_LIMIT_INVALID/);
+  assert.throws(() => resolvePhpMemoryLimits({ IOWEB_PHP_FPM_MEMORY_LIMIT: 'unlimited' }), /IOWEB_PHP_FPM_MEMORY_LIMIT_INVALID/);
+});
+
+test('WordPress emits separate managed SAPI configuration and an actual FPM probe', () => {
+  const hook = renderPhpMemoryHook();
+  assert.match(hook, /cli\/conf\.d\/40-ioweb-memory\.ini/);
+  assert.match(hook, /fpm\/conf\.d\/40-ioweb-memory\.ini/);
+  assert.match(hook, /IOWEB_PHP_CLI_MEMORY_LIMIT_INVALID/);
+  assert.match(hook, /IOWEB_PHP_FPM_MEMORY_LIMIT_INVALID/);
+  assert.match(renderFpmProbe(), /fpm-fcgi/);
+});
 
 test('WordPress runtime declares the shared FPM timestamp and realpath policy', () => {
   const config = renderPhpPerformance();
@@ -42,6 +62,8 @@ test('WordPress runtime renderer creates an idempotent full-HD missing-image fal
     const php = path.join(root, '.ddev', 'php', '90-ioweb-fpm-performance.ini');
     const content = fs.readFileSync(destination, 'utf8');
     assert.match(fs.readFileSync(php, 'utf8'), /opcache\.revalidate_freq = 120/);
+    assert.match(fs.readFileSync(path.join(root, '.ddev', 'web-entrypoint.d', 'ioweb-php-memory.sh'), 'utf8'), /memory_limit = \$\{cli_memory\}/);
+    assert.ok(fs.existsSync(path.join(root, '.ddev', 'ioweb-fpm-memory-probe.php')));
     assert.match(content, /ioweb-managed: docker-bootstrap WordPress missing image fallback v1/);
     assert.match(content, /location \^~ \/wp-content\/uploads\//);
     assert.match(content, /try_files \$uri @ioweb_wordpress_missing_image/);
