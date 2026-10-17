@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
+# ioweb-managed: explicit WordPress CLI wrapper.
 set -eu
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-project_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+project_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 exec node "$script_dir/../src/cli.js" wp --project-root "$project_root" "$@"
